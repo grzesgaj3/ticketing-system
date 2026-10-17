@@ -16,6 +16,16 @@ app.use(
     saveUninitialized: false,
   }),
 );
+
+app.param("id", (req, res, next, id) => {
+  if (!/^\d{1,9}$/.test(id)) {
+    return res
+      .status(404)
+      .render("error", { status: 404, message: "Page not found" });
+  }
+  next();
+});
+
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
   next();
@@ -275,6 +285,13 @@ app.post("/login", async (req, res) => {
 
 app.get("/logout", (req, res) => {
   req.session.destroy(() => res.redirect("/"));
+});
+
+app.use((err, req, res, next) => {
+  console.error(err);
+  res
+    .status(500)
+    .render("error", { status: 500, message: "Something went wrong" });
 });
 
 app.listen(3000, () => console.log("http://localhost:3000"));
