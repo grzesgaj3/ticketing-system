@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>My orders</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <%- include('nav') %>
+  <div class="container mt-4">
+    <h1>My orders</h1>
+    <% if (orders.length === 0) { %>
+      <p>You have no orders yet.</p>
+    <% } %>
+    <% orders.forEach(order => { %>
+      <div class="card mb-3">
+        <div class="card-body">
+          <h5 class="card-title"><%= order.title %></h5>
+          <p class="text-muted mb-2">
+            Event: <%= order.event_date.toLocaleString('pl-PL') %><br>
+            Ordered: <%= order.created_at.toLocaleString('pl-PL') %>
+          </p>
+          <ul>
+            <% order.seats.forEach(seat => { %>
+              <li>Section <%= seat.section %>, row <%= seat.row_num %>, seat <%= seat.seat_number %></li>
+            <% }) %>
+          </ul>
+          <strong>Total: <%= order.total %> PLN</strong>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</body>
+</html>

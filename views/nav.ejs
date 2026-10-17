@@ -1,0 +1,16 @@
+<nav class="navbar navbar-light bg-light px-3">
+  <a class="navbar-brand" href="/">Tickets</a>
+  <div>
+    <% if (user) { %>
+      <span class="me-2"><%= user.email %></span>
+      <a href="/orders" class="me-2">My orders</a>
+      <% if (user.role === 'admin') { %>
+      <a href="/admin/orders" class="me-2">All orders</a>
+<% } %>
+      <a href="/logout">Log out</a>
+    <% } else { %>
+      <a href="/login" class="me-2">Login</a>
+      <a href="/register">Register</a>
+    <% } %>
+  </div>
+</nav>
