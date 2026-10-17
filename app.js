@@ -21,7 +21,11 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get("/", async (req, res) => {
+app.get("/", (req, res) => {
+  res.render("home");
+});
+
+app.get("/events", async (req, res) => {
   const result = await pool.query(
     "SELECT id, title, event_date, price FROM events ORDER BY event_date",
   );
@@ -211,12 +215,12 @@ app.post("/admin/events/:id/edit", requireAdmin, async (req, res) => {
     "UPDATE events SET title = $1, description = $2, event_date = $3, price = $4 WHERE id = $5",
     [title, description, event_date, price, req.params.id],
   );
-  res.redirect("/");
+  res.redirect("/events");
 });
 
 app.post("/admin/events/:id/delete", requireAdmin, async (req, res) => {
   await pool.query("DELETE FROM events WHERE id = $1", [req.params.id]);
-  res.redirect("/");
+  res.redirect("/events");
 });
 
 app.get("/admin/orders", requireAdmin, async (req, res) => {
@@ -266,7 +270,7 @@ app.post("/login", async (req, res) => {
     return res.render("login", { error: "Wrong email or password" });
   }
   req.session.user = { id: user.id, email: user.email, role: user.role };
-  res.redirect("/");
+  res.redirect("/events");
 });
 
 app.get("/logout", (req, res) => {
