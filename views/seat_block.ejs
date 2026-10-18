@@ -1,0 +1,18 @@
+<% const rowList = Object.entries(rows); if (locals.reverse) rowList.reverse(); %>
+<div>
+  <h6 class="text-center">Section <%= section %></h6>
+  <div class="d-flex justify-content-center gap-1 <%= locals.vertical ? 'flex-row' : 'flex-column' %>">
+    <% rowList.forEach(([rowNum, rowSeats]) => { %>
+      <div class="d-flex justify-content-center gap-1 <%= locals.vertical ? 'flex-column' : 'flex-row' %>">
+        <% rowSeats.forEach(seat => { %>
+          <input type="checkbox" class="btn-check" name="seats"
+                 value="<%= seat.id %>" id="seat<%= seat.id %>"
+                 <%= seat.taken ? 'disabled' : '' %>>
+          <label class="btn seat-btn <%= seat.taken ? 'btn-secondary' : 'btn-outline-success' %>"
+                 for="seat<%= seat.id %>"
+                 title="Row <%= rowNum %>, seat <%= seat.seat_number %>"><%= seat.seat_number %></label>
+        <% }) %>
+      </div>
+    <% }) %>
+  </div>
+</div>

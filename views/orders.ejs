@@ -21,10 +21,16 @@
           </p>
           <ul>
             <% order.seats.forEach(seat => { %>
-              <li>Section <%= seat.section %>, row <%= seat.row_num %>, seat <%= seat.seat_number %></li>
+              <li><%= seat.section === 'FLOOR' ? 'Floor (standing)' : `Section ${seat.section}, row ${seat.row_num}, seat ${seat.seat_number}` %></li>
             <% }) %>
           </ul>
           <strong>Total: <%= order.total %> PLN</strong>
+          <% if (order.can_cancel) { %>
+          <form method="POST" action="/orders/<%= order.id %>/cancel" class="mt-2"
+          onsubmit="return confirm('Cancel this order?')">
+          <button class="btn btn-outline-danger btn-sm">Cancel order</button>
+          </form>
+    <% } %>
         </div>
       </div>
     <% }) %>

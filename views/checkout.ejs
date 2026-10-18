@@ -16,6 +16,12 @@
           <span><%= event.price %> PLN</span>
         </li>
       <% }) %>
+      <% if (floor > 0) { %>
+        <li class="list-group-item d-flex justify-content-between">
+          <span>Floor (standing) × <%= floor %></span>
+          <span><%= (Number(event.price) * floor).toFixed(2) %> PLN</span>
+        </li>
+      <% } %>
       <li class="list-group-item d-flex justify-content-between fw-bold">
         <span>Total</span><span><%= total %> PLN</span>
       </li>
@@ -25,6 +31,7 @@
       <% seats.forEach(seat => { %>
         <input type="hidden" name="seats" value="<%= seat.id %>">
       <% }) %>
+      <input type="hidden" name="floor" value="<%= floor %>">
       <button class="btn btn-success">Pay (simulated)</button>
       <a href="/events/<%= event.id %>/seats" class="btn btn-link">Back</a>
     </form>
