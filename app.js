@@ -9,7 +9,7 @@ const path = require('path');
 app.set('views', path.join(__dirname, 'views'));
 
 const session = require("express-session");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 
 app.use(express.urlencoded({ extended: false }));
 app.use(

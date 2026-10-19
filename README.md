@@ -1,3 +1,5 @@
+Wymagania: Node.js 22+ (używa wbudowanego modułu `node:sqlite`).
+
 1. Skopiuj `db_example.js` na `db.js` (jeśli jeszcze nie istnieje).
 2. (Opcjonalnie) Zastosuj `schema.sql` w swojej bazie SQLite — przy pierwszym uruchomieniu aplikacja utworzy bazę i dane automatycznie.
 3. W terminalu:
