@@ -16,6 +16,16 @@
              value="<%= dateValue %>">
       <input class="form-control mb-3" type="number" step="0.01" min="0" name="price" placeholder="Price" required
              value="<%= event ? event.price : '' %>">
+      <h6>Extra per row (PLN, added to the price)</h6>
+      <div class="row g-2 mb-3">
+        <% for (let r = 1; r <= rowCount; r++) { %>
+          <div class="col-4">
+            <label class="form-label small mb-0" for="extra<%= r %>">Row <%= r %></label>
+            <input class="form-control form-control-sm" type="number" step="0.01" min="0"
+                   id="extra<%= r %>" name="extra_<%= r %>" value="<%= extras[r] || 0 %>">
+          </div>
+        <% } %>
+      </div>
       <select class="form-select mb-3" name="arena_id" required>
          <% arenas.forEach(a => { %>
             <option value="<%= a.id %>" <%= event && event.arena_id === a.id ? 'selected' : '' %>><%= a.name %></option>

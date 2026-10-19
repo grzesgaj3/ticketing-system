@@ -11,7 +11,11 @@
     <h1 class="mt-3"><%= event.title %></h1>
     <p><%= event.event_date.toLocaleString('pl-PL') %></p>
     <p><%= event.description %></p>
-    <p class="fw-bold"><%= event.price %> PLN per seat</p>
+    <% if (event.min_price === null) { %>
+      <p><span class="badge bg-secondary">Sold out</span></p>
+    <% } else { %>
+      <p class="fw-bold">From <%= event.min_price %> PLN</p>
+    <% } %>
     <a href="/events/<%= event.id %>/seats" class="btn btn-success">Choose seats</a>
   </div>
 </body>

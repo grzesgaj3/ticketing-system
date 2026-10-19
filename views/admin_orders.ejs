@@ -10,7 +10,7 @@
     <h1>All orders</h1>
     <table class="table">
       <thead>
-        <tr><th>#</th><th>User</th><th>Event</th><th>Seats</th><th>Total</th><th>Date</th></tr>
+        <tr><th>#</th><th>User</th><th>Event</th><th>Seats</th><th>Total</th><th>Date</th><th></th></tr>
       </thead>
       <tbody>
         <% orders.forEach(o => { %>
@@ -21,6 +21,12 @@
             <td><%= o.seats %></td>
             <td><%= o.total %> PLN</td>
             <td><%= o.created_at.toLocaleString('pl-PL') %></td>
+            <td>
+              <form method="POST" action="/admin/orders/<%= o.id %>/cancel"
+                    onsubmit="return confirm('Cancel order #<%= o.id %>?')">
+                <button class="btn btn-outline-danger btn-sm">Cancel</button>
+              </form>
+            </td>
           </tr>
         <% }) %>
       </tbody>

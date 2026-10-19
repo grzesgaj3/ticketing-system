@@ -11,15 +11,29 @@
     <a href="/admin/events/new" class="btn btn-success mb-3">Add event</a>
     <% } %>
     <h1>Events</h1>
+
+    <form method="GET" action="/events" class="d-flex mb-3" style="max-width: 400px;">
+      <input class="form-control me-2" type="search" name="q" id="search" placeholder="Search events"
+             value="<%= q %>">
+      <button class="btn btn-outline-primary">Search</button>
+    </form>
+    <% if (events.length === 0) { %>
+      <p>No events found.</p>
+    <% } %>
+
     <div class="row">
       <% events.forEach(event => { %>
-        <div class="col-md-4 mb-3">
+        <div class="col-md-4 mb-3 event-card" data-title="<%= event.title.toLowerCase() %>">
           <div class="card">
             <div class="card-body">
               <h5 class="card-title"><%= event.title %></h5>
               <p class="card-text">
                 <%= event.event_date.toLocaleString('pl-PL') %><br>
-                From <%= event.price %> PLN
+                <% if (event.min_price === null) { %>
+                  <span class="badge bg-secondary">Sold out</span>
+                <% } else { %>
+                  From <%= event.min_price %> PLN
+                <% } %>
               </p>
               <a href="/events/<%= event.id %>" class="btn btn-primary">Details</a>
               <% if (user && user.role === 'admin') { %>
@@ -34,6 +48,24 @@
         </div>
       <% }) %>
     </div>
+    <p id="no-results" class="d-none">No events found.</p>
   </div>
+
+<script>
+  const search = document.getElementById('search');
+  const cards = document.querySelectorAll('.event-card');
+  const noResults = document.getElementById('no-results');
+
+  search.addEventListener('input', () => {
+    const text = search.value.trim().toLowerCase();
+    let visible = 0;
+    cards.forEach(card => {
+      const match = card.dataset.title.includes(text);
+      card.classList.toggle('d-none', !match);
+      if (match) visible++;
+    });
+    noResults.classList.toggle('d-none', visible > 0);
+  });
+</script>
 </body>
 </html>

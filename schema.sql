@@ -18,9 +18,16 @@ CREATE TABLE events (
     description TEXT,
     event_date  TIMESTAMPTZ   NOT NULL,
     price       NUMERIC(8,2)  NOT NULL CHECK (price >= 0),
-     arena_id    INT           NOT NULL REFERENCES arenas(id)
+    arena_id    INT           NOT NULL REFERENCES arenas(id)
 );
- 
+
+CREATE TABLE event_row_prices (
+    event_id INT          NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    row_num  INT          NOT NULL CHECK (row_num > 0),
+    extra    NUMERIC(8,2) NOT NULL DEFAULT 0 CHECK (extra >= 0),
+    PRIMARY KEY (event_id, row_num)
+);
+
 CREATE TABLE seats (
     id          SERIAL PRIMARY KEY,
     arena_id    INT         NOT NULL REFERENCES arenas(id),
@@ -29,23 +36,23 @@ CREATE TABLE seats (
     seat_number INT         NOT NULL,
     UNIQUE (arena_id, section, row_num, seat_number)
 );
- 
+
 CREATE TABLE orders (
     id         SERIAL PRIMARY KEY,
     user_id    INT           NOT NULL REFERENCES users(id),
     total      NUMERIC(10,2) NOT NULL,
     created_at TIMESTAMPTZ   NOT NULL DEFAULT now()
 );
- 
+
 CREATE TABLE order_items (
     id       SERIAL PRIMARY KEY,
     order_id INT           NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    event_id INT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    event_id INT           NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     seat_id  INT           NOT NULL REFERENCES seats(id),
     price    NUMERIC(8,2)  NOT NULL,
     UNIQUE (event_id, seat_id)
 );
- 
+
 INSERT INTO arenas (name, layout) VALUES
   ('Silesian Theater Hall', 'theater'),
   ('Visual Arena', 'stadium');
@@ -61,9 +68,17 @@ WHERE a.name = 'Silesian Theater Hall';
 INSERT INTO seats (arena_id, section, row_num, seat_number)
 SELECT a.id, s.section, r, n
 FROM arenas a,
-     (VALUES ('A', 20), ('B', 10), ('C', 20), ('D', 10), ('E', 20)) AS s(section, per_row),
+     (VALUES ('A'), ('C'), ('E')) AS s(section),
      generate_series(1, 10) AS r,
-     generate_series(1, s.per_row) AS n
+     generate_series(1, 20) AS n
+WHERE a.name = 'Visual Arena';
+
+INSERT INTO seats (arena_id, section, row_num, seat_number)
+SELECT a.id, s.section, r, n
+FROM arenas a,
+     (VALUES ('B'), ('D')) AS s(section),
+     generate_series(1, 10) AS r,
+     generate_series(1, r) AS n
 WHERE a.name = 'Visual Arena';
 
 INSERT INTO seats (arena_id, section, row_num, seat_number)

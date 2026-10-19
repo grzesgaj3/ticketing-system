@@ -13,6 +13,19 @@
                 display: flex; align-items: center; justify-content: center; padding: 12px; border-radius: 6px; }
   .floor { grid-area: floor; background: #2e7d32; color: white; border-radius: 12px;
            display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .corner-grid { display: grid; grid-auto-rows: 20px; gap: 4px; }
+  .seat-free {
+    --bs-btn-color: #000;
+    --bs-btn-bg: var(--seat-color);
+    --bs-btn-border-color: var(--seat-color);
+    --bs-btn-hover-color: #000;
+    --bs-btn-hover-bg: var(--seat-color);
+    --bs-btn-hover-border-color: #000;
+    --bs-btn-active-color: #000;
+    --bs-btn-active-bg: #fff;
+    --bs-btn-active-border-color: var(--seat-color);
+  }
+  .legend-dot { display: inline-block; width: 14px; height: 14px; border-radius: 3px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -20,36 +33,42 @@
   <div class="container mt-4">
     <h1><%= event.title %></h1>
     <p class="text-muted"><%= event.arena_name %></p>
-    <p>Green = free, grey = taken. Click seats to select them.</p>
+    <p>Click seats to select them. The color shows the price.</p>
+    <div class="d-flex flex-wrap gap-3 mb-3">
+      <% Object.entries(priceColors).forEach(([price, color]) => { %>
+        <span><span class="legend-dot" style="background: <%= color %>"></span> <%= price %> PLN</span>
+      <% }) %>
+      <span><span class="legend-dot" style="background: #6c757d"></span> Taken</span>
+    </div>
 
     <form method="POST" action="/events/<%= event.id %>/checkout">
       <% if (event.layout === 'stadium') { %>
-  <div class="overflow-auto">
-    <div class="stadium">
-      <div class="stage-west">STAGE</div>
-      <div style="grid-area: a"><%- include('seat_block', { section: 'A', rows: sections.A, reverse: true }) %></div>
-      <div style="grid-area: b"><%- include('seat_block', { section: 'B', rows: sections.B, reverse: true }) %></div>
-      <div style="grid-area: c"><%- include('seat_block', { section: 'C', rows: sections.C, vertical: true }) %></div>
-      <div style="grid-area: d"><%- include('seat_block', { section: 'D', rows: sections.D }) %></div>
-      <div style="grid-area: e"><%- include('seat_block', { section: 'E', rows: sections.E }) %></div>
-      <div class="floor">
-        <strong>FLOOR (standing)</strong>
-        <span><%= floorFree %> tickets left</span>
-        <label class="mt-2">Tickets:
-          <input type="number" name="floor" min="0" max="<%= floorFree %>" value="0"
-                 class="form-control form-control-sm d-inline-block" style="width: 80px">
-        </label>
-      </div>
-    </div>
-  </div>
-<% } else { %>
-    <div class="stage">STAGE</div>
-    <div class="d-flex justify-content-center gap-4">
-    <% Object.entries(sections).forEach(([section, rows]) => { %>
-      <%- include('seat_block', { section, rows }) %>
-    <% }) %>
-    </div>
-    <% } %>
+        <div class="overflow-auto">
+          <div class="stadium">
+            <div class="stage-west">STAGE</div>
+            <div style="grid-area: a"><%- include('seat_block', { section: 'A', rows: sections.A, reverse: true }) %></div>
+            <div style="grid-area: b"><%- include('corner_block', { section: 'B', rows: sections.B, floorBelow: true }) %></div>
+            <div style="grid-area: c"><%- include('seat_block', { section: 'C', rows: sections.C, vertical: true, labelPos: 'right' }) %></div>
+            <div style="grid-area: d"><%- include('corner_block', { section: 'D', rows: sections.D, labelPos: 'bottom' }) %></div>
+            <div style="grid-area: e"><%- include('seat_block', { section: 'E', rows: sections.E, labelPos: 'bottom' }) %></div>
+            <div class="floor">
+              <strong>FLOOR (standing)</strong>
+              <span><%= event.price %> PLN · <%= floorFree %> tickets left</span>
+              <label class="mt-2">Tickets:
+                <input type="number" name="floor" min="0" max="<%= floorFree %>" value="0"
+                       class="form-control form-control-sm d-inline-block" style="width: 80px">
+              </label>
+            </div>
+          </div>
+        </div>
+      <% } else { %>
+        <div class="stage">STAGE</div>
+        <div class="d-flex justify-content-center gap-4">
+          <% Object.entries(sections).forEach(([section, rows]) => { %>
+            <%- include('seat_block', { section, rows }) %>
+          <% }) %>
+        </div>
+      <% } %>
       <button class="btn btn-primary mt-4">Continue to checkout</button>
     </form>
   </div>

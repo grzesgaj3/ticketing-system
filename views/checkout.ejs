@@ -13,7 +13,7 @@
       <% seats.forEach(seat => { %>
         <li class="list-group-item d-flex justify-content-between">
           <span>Section <%= seat.section %>, row <%= seat.row_num %>, seat <%= seat.seat_number %></span>
-          <span><%= event.price %> PLN</span>
+          <span><%= seat.price %> PLN</span>
         </li>
       <% }) %>
       <% if (floor > 0) { %>

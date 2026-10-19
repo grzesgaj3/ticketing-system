@@ -1,0 +1,21 @@
+<% const size = Object.keys(rows).length; %>
+<div class="<%= locals.labelPos === 'bottom' ? 'd-flex flex-column-reverse' : locals.labelPos === 'right' ? 'd-flex flex-row-reverse align-items-center gap-2' : '' %>">
+  <h6 class="text-center <%= locals.labelPos ? 'my-2' : '' %>">Section <%= section %></h6>
+  <div class="corner-grid" style="grid-template-columns: repeat(<%= size %>, 20px)">
+    <% Object.entries(rows).forEach(([rowNum, rowSeats]) => { %>
+      <% rowSeats.forEach(seat => {
+           const r = Number(rowNum);
+           const n = seat.seat_number;
+           const gridRow = locals.floorBelow ? size + 1 - n : n;
+           const gridCol = r - n + 1; %>
+        <input type="checkbox" class="btn-check" name="seats"
+               value="<%= seat.id %>" id="seat<%= seat.id %>"
+               <%= seat.taken ? 'disabled' : '' %>>
+       <label class="btn seat-btn <%= seat.taken ? 'btn-secondary' : 'seat-free' %>" 
+               for="seat<%= seat.id %>"
+               style="--seat-color: <%= priceColors[seat.price] %>; grid-row: <%= gridRow %>; grid-column: <%= gridCol %>"
+               title="Row <%= rowNum %>, seat <%= n %> – <%= seat.price %> PLN"><%= n %></label>
+      <% }) %>
+    <% }) %>
+  </div>
+</div>

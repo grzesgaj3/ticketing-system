@@ -14,7 +14,7 @@ const bcrypt = require("bcrypt");
 app.use(express.urlencoded({ extended: false }));
 app.use(
   session({
-    secret: "change-this-to-any-long-random-text",
+    secret: "secret-secret-secret",
     resave: false,
     saveUninitialized: false,
   }),
@@ -39,16 +39,38 @@ app.get("/", (req, res) => {
 });
 
 app.get("/events", async (req, res) => {
+  const q = String(req.query.q ?? "").trim();
   const result = await pool.query(
-    "SELECT id, title, event_date, price FROM events ORDER BY event_date",
+    `SELECT e.id, e.title, e.event_date,
+            MIN(e.price + CASE WHEN s.section = 'FLOOR' THEN 0
+                               ELSE COALESCE(erp.extra, 0) END) AS min_price
+     FROM events e
+     LEFT JOIN seats s ON s.arena_id = e.arena_id
+       AND NOT EXISTS (SELECT 1 FROM order_items oi
+                       WHERE oi.seat_id = s.id AND oi.event_id = e.id)
+     LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
+     WHERE e.title ILIKE $1
+     GROUP BY e.id
+     ORDER BY e.event_date`,
+    [`%${q}%`],
   );
-  res.render("index", { events: result.rows });
+  res.render("index", { events: result.rows, q });
 });
 
 app.get("/events/:id", async (req, res) => {
-  const result = await pool.query("SELECT * FROM events WHERE id = $1", [
-    req.params.id,
-  ]);
+  const result = await pool.query(
+    `SELECT e.*,
+            MIN(e.price + CASE WHEN s.section = 'FLOOR' THEN 0
+                               ELSE COALESCE(erp.extra, 0) END) AS min_price
+     FROM events e
+     LEFT JOIN seats s ON s.arena_id = e.arena_id
+       AND NOT EXISTS (SELECT 1 FROM order_items oi
+                       WHERE oi.seat_id = s.id AND oi.event_id = e.id)
+     LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
+     WHERE e.id = $1
+     GROUP BY e.id`,
+    [req.params.id],
+  );
   if (result.rows.length === 0) {
     return res.status(404).send("Event not found");
   }
@@ -74,12 +96,15 @@ app.get("/events/:id/seats", requireLogin, async (req, res) => {
 
   const seatsResult = await pool.query(
     `SELECT s.id, s.section, s.row_num, s.seat_number,
-            (oi.id IS NOT NULL) AS taken
+            (oi.id IS NOT NULL) AS taken,
+            e.price + COALESCE(erp.extra, 0) AS price
      FROM seats s
-     LEFT JOIN order_items oi ON oi.seat_id = s.id AND oi.event_id = $1
-     WHERE s.arena_id = $2
+     JOIN events e ON e.id = $1
+     LEFT JOIN order_items oi ON oi.seat_id = s.id AND oi.event_id = e.id
+     LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
+     WHERE s.arena_id = e.arena_id
      ORDER BY s.section, s.row_num, s.seat_number`,
-    [req.params.id, event.arena_id],
+    [req.params.id],
   );
 
   const sections = {};
@@ -93,17 +118,40 @@ app.get("/events/:id/seats", requireLogin, async (req, res) => {
     (sections[seat.section][seat.row_num] ??= []).push(seat);
   });
 
-  res.render("seats", { event, sections, floorFree });
+  // one color per distinct price, cheapest first
+  const palette = ["#66bb6a", "#64b5f6", "#ffd54f", "#ba68c8", "#4dd0e1",
+                   "#f06292", "#ffa726", "#d63330", "#f36532", "#d4e157"];
+  const prices = [...new Set(
+    seatsResult.rows.filter((s) => s.section !== "FLOOR").map((s) => s.price),
+  )].sort((a, b) => a - b);
+  const priceColors = {};
+  prices.forEach((p, i) => (priceColors[p] = palette[i % palette.length]));
+
+  res.render("seats", { event, sections, floorFree, priceColors });
 });
 
 function toSeatIds(body) {
   if (!body.seats) return [];
-  return [].concat(body.seats).map(Number); // one seat arrives as a string, several as an array
+  return [].concat(body.seats).map(Number); 
 }
 
 function toFloorCount(body) {
   const n = Number(body.floor);
   return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+function getSeatPrices(db, eventId, seatIds) {
+  return db.query(
+    `SELECT s.id, s.section, s.row_num, s.seat_number,
+            e.price + COALESCE(erp.extra, 0) AS price
+     FROM seats s
+     JOIN events e ON e.id = $1 AND e.arena_id = s.arena_id
+     LEFT JOIN event_row_prices erp
+       ON erp.event_id = e.id AND erp.row_num = s.row_num AND s.section <> 'FLOOR'
+     WHERE s.id = ANY($2)
+     ORDER BY s.section, s.row_num, s.seat_number`,
+    [eventId, seatIds],
+  );
 }
 
 app.post("/events/:id/checkout", requireLogin, async (req, res) => {
@@ -118,14 +166,11 @@ app.post("/events/:id/checkout", requireLogin, async (req, res) => {
   if (eventResult.rows.length === 0)
     return res.status(404).send("Event not found");
 
-  const seatsResult = await pool.query(
-    `SELECT id, section, row_num, seat_number FROM seats
-     WHERE id = ANY($1) ORDER BY section, row_num, seat_number`,
-    [seatIds],
-  );
+  const seatsResult = await getSeatPrices(pool, req.params.id, seatIds);
 
   const event = eventResult.rows[0];
-  const total = (Number(event.price) * (seatsResult.rows.length + floor)).toFixed(2);
+  const seatsTotal = seatsResult.rows.reduce((sum, s) => sum + Number(s.price), 0);
+  const total = (seatsTotal + Number(event.price) * floor).toFixed(2);
   res.render("checkout", { event, seats: seatsResult.rows, floor, total });
 });
 
@@ -164,15 +209,16 @@ app.post("/events/:id/book", requireLogin, async (req, res) => {
       free.rows.forEach((r) => seatIds.push(r.id));
     }
 
-    const total = (Number(event.price) * seatIds.length).toFixed(2);
+    const seats = (await getSeatPrices(client, req.params.id, seatIds)).rows;
+    const total = seats.reduce((sum, s) => sum + Number(s.price), 0).toFixed(2);
     const order = await client.query(
       "INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING id",
       [req.session.user.id, total],
     );
-    for (const seatId of seatIds) {
+    for (const seat of seats) {
       await client.query(
         "INSERT INTO order_items (order_id, event_id, seat_id, price) VALUES ($1, $2, $3, $4)",
-        [order.rows[0].id, req.params.id, seatId, event.price],
+        [order.rows[0].id, req.params.id, seat.id, seat.price],
       );
     }
     await client.query("COMMIT");
@@ -252,17 +298,42 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+async function getRowCount() {
+  const result = await pool.query(
+    "SELECT MAX(row_num) AS max FROM seats WHERE section <> 'FLOOR'",
+  );
+  return result.rows[0].max || 0;
+}
+
+async function saveRowPrices(eventId, body) {
+  const rowCount = await getRowCount();
+  await pool.query("DELETE FROM event_row_prices WHERE event_id = $1", [eventId]);
+  for (let r = 1; r <= rowCount; r++) {
+    const extra = Number(body["extra_" + r]);
+    if (extra > 0) {
+      await pool.query(
+        "INSERT INTO event_row_prices (event_id, row_num, extra) VALUES ($1, $2, $3)",
+        [eventId, r, extra],
+      );
+    }
+  }
+}
+
 app.get("/admin/events/new", requireAdmin, async (req, res) => {
   const arenas = await pool.query("SELECT id, name FROM arenas ORDER BY name");
-  res.render("event_form", { event: null, dateValue: "", arenas: arenas.rows });
+  const rowCount = await getRowCount();
+  res.render("event_form", {
+    event: null, dateValue: "", arenas: arenas.rows, rowCount, extras: {},
+  });
 });
 
 app.post("/admin/events", requireAdmin, async (req, res) => {
   const { title, description, event_date, price, arena_id } = req.body;
-  await pool.query(
-    "INSERT INTO events (title, description, event_date, price, arena_id) VALUES ($1, $2, $3, $4, $5)",
+  const result = await pool.query(
+    "INSERT INTO events (title, description, event_date, price, arena_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
     [title, description, event_date, price, arena_id],
   );
+  await saveRowPrices(result.rows[0].id, req.body);
   res.redirect("/events");
 });
 
@@ -278,7 +349,14 @@ app.get("/admin/events/:id/edit", requireAdmin, async (req, res) => {
   const dateValue = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
     .toISOString()
     .slice(0, 16);
-  res.render("event_form", { event, dateValue, arenas: arenas.rows });
+    const extrasResult = await pool.query(
+    "SELECT row_num, extra FROM event_row_prices WHERE event_id = $1",
+    [req.params.id],
+  );
+  const extras = {};
+  extrasResult.rows.forEach((r) => (extras[r.row_num] = r.extra));
+  const rowCount = await getRowCount();
+  res.render("event_form", { event, dateValue, arenas: arenas.rows, rowCount, extras });
 });
 
 app.post("/admin/events/:id/edit", requireAdmin, async (req, res) => {
@@ -287,6 +365,7 @@ app.post("/admin/events/:id/edit", requireAdmin, async (req, res) => {
     "UPDATE events SET title = $1, description = $2, event_date = $3, price = $4, arena_id = $5 WHERE id = $6",
     [title, description, event_date, price, arena_id, req.params.id],
   );
+  await saveRowPrices(req.params.id, req.body);
   res.redirect("/events");
 });
 
@@ -310,6 +389,11 @@ app.get("/admin/orders", requireAdmin, async (req, res) => {
      ORDER BY o.created_at DESC`,
   );
   res.render("admin_orders", { orders: result.rows });
+});
+
+app.post("/admin/orders/:id/cancel", requireAdmin, async (req, res) => {
+  await pool.query("DELETE FROM orders WHERE id = $1", [req.params.id]);
+  res.redirect("/admin/orders");
 });
 
 app.get("/register", (req, res) => res.render("register", { error: null }));

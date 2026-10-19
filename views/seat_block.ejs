@@ -1,16 +1,17 @@
 <% const rowList = Object.entries(rows); if (locals.reverse) rowList.reverse(); %>
-<div>
-  <h6 class="text-center">Section <%= section %></h6>
+<div class="<%= locals.labelPos === 'bottom' ? 'd-flex flex-column-reverse' : locals.labelPos === 'right' ? 'd-flex flex-row-reverse align-items-center gap-2' : '' %>">
+  <h6 class="text-center <%= locals.labelPos ? 'my-2' : '' %>">Section <%= section %></h6>
   <div class="d-flex justify-content-center gap-1 <%= locals.vertical ? 'flex-row' : 'flex-column' %>">
     <% rowList.forEach(([rowNum, rowSeats]) => { %>
-      <div class="d-flex justify-content-center gap-1 <%= locals.vertical ? 'flex-column' : 'flex-row' %>">
+      <div class="d-flex gap-1 <%= locals.vertical ? 'flex-column' : 'flex-row' %> <%= locals.alignStart ? 'justify-content-start' : 'justify-content-center' %>">
         <% rowSeats.forEach(seat => { %>
           <input type="checkbox" class="btn-check" name="seats"
                  value="<%= seat.id %>" id="seat<%= seat.id %>"
                  <%= seat.taken ? 'disabled' : '' %>>
-          <label class="btn seat-btn <%= seat.taken ? 'btn-secondary' : 'btn-outline-success' %>"
+          <label class="btn seat-btn <%= seat.taken ? 'btn-secondary' : 'seat-free' %>"
                  for="seat<%= seat.id %>"
-                 title="Row <%= rowNum %>, seat <%= seat.seat_number %>"><%= seat.seat_number %></label>
+                 style="--seat-color: <%= priceColors[seat.price] %>"
+                 title="Row <%= rowNum %>, seat <%= seat.seat_number %> – <%= seat.price %> PLN"><%= seat.seat_number %></label>
         <% }) %>
       </div>
     <% }) %>
