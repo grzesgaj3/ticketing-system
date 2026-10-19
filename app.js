@@ -49,10 +49,10 @@ app.get("/events", async (req, res) => {
        AND NOT EXISTS (SELECT 1 FROM order_items oi
                        WHERE oi.seat_id = s.id AND oi.event_id = e.id)
      LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
-     WHERE e.title ILIKE $1
+     WHERE LOWER(e.title) LIKE ?
      GROUP BY e.id
      ORDER BY e.event_date`,
-    [`%${q}%`],
+    [`%${q.toLowerCase()}%`],
   );
   res.render("index", { events: result.rows, q });
 });
@@ -67,7 +67,7 @@ app.get("/events/:id", async (req, res) => {
        AND NOT EXISTS (SELECT 1 FROM order_items oi
                        WHERE oi.seat_id = s.id AND oi.event_id = e.id)
      LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
-     WHERE e.id = $1
+     WHERE e.id = ?
      GROUP BY e.id`,
     [req.params.id],
   );
@@ -86,7 +86,7 @@ app.get("/events/:id/seats", requireLogin, async (req, res) => {
   const eventResult = await pool.query(
     `SELECT e.*, a.name AS arena_name, a.layout
      FROM events e JOIN arenas a ON a.id = e.arena_id
-     WHERE e.id = $1`,
+     WHERE e.id = ?`,
     [req.params.id],
   );
   if (eventResult.rows.length === 0) {
@@ -99,7 +99,7 @@ app.get("/events/:id/seats", requireLogin, async (req, res) => {
             (oi.id IS NOT NULL) AS taken,
             e.price + COALESCE(erp.extra, 0) AS price
      FROM seats s
-     JOIN events e ON e.id = $1
+     JOIN events e ON e.id = ?
      LEFT JOIN order_items oi ON oi.seat_id = s.id AND oi.event_id = e.id
      LEFT JOIN event_row_prices erp ON erp.event_id = e.id AND erp.row_num = s.row_num
      WHERE s.arena_id = e.arena_id
@@ -141,16 +141,20 @@ function toFloorCount(body) {
 }
 
 function getSeatPrices(db, eventId, seatIds) {
+  if (seatIds.length === 0) {
+    return { rows: [], rowCount: 0 };
+  }
+  const placeholders = seatIds.map(() => "?").join(",");
   return db.query(
     `SELECT s.id, s.section, s.row_num, s.seat_number,
             e.price + COALESCE(erp.extra, 0) AS price
      FROM seats s
-     JOIN events e ON e.id = $1 AND e.arena_id = s.arena_id
+     JOIN events e ON e.id = ? AND e.arena_id = s.arena_id
      LEFT JOIN event_row_prices erp
        ON erp.event_id = e.id AND erp.row_num = s.row_num AND s.section <> 'FLOOR'
-     WHERE s.id = ANY($2)
+     WHERE s.id IN (${placeholders})
      ORDER BY s.section, s.row_num, s.seat_number`,
-    [eventId, seatIds],
+    [eventId, ...seatIds],
   );
 }
 
@@ -160,7 +164,7 @@ app.post("/events/:id/checkout", requireLogin, async (req, res) => {
   if (seatIds.length === 0 && floor === 0)
     return res.redirect(`/events/${req.params.id}/seats`);
 
-  const eventResult = await pool.query("SELECT * FROM events WHERE id = $1", [
+  const eventResult = await pool.query("SELECT * FROM events WHERE id = ?", [
     req.params.id,
   ]);
   if (eventResult.rows.length === 0)
@@ -180,7 +184,7 @@ app.post("/events/:id/book", requireLogin, async (req, res) => {
   if (seatIds.length === 0 && floor === 0)
     return res.redirect(`/events/${req.params.id}/seats`);
 
-  const eventResult = await pool.query("SELECT * FROM events WHERE id = $1", [
+  const eventResult = await pool.query("SELECT * FROM events WHERE id = ?", [
     req.params.id,
   ]);
   if (eventResult.rows.length === 0)
@@ -194,10 +198,10 @@ app.post("/events/:id/book", requireLogin, async (req, res) => {
     if (floor > 0) {
       const free = await client.query(
         `SELECT s.id FROM seats s
-         WHERE s.arena_id = $1 AND s.section = 'FLOOR'
+         WHERE s.arena_id = ? AND s.section = 'FLOOR'
            AND NOT EXISTS (SELECT 1 FROM order_items oi
-                           WHERE oi.seat_id = s.id AND oi.event_id = $2)
-         ORDER BY s.id LIMIT $3`,
+                           WHERE oi.seat_id = s.id AND oi.event_id = ?)
+         ORDER BY s.id LIMIT ?`,
         [event.arena_id, req.params.id, floor],
       );
       if (free.rows.length < floor) {
@@ -212,12 +216,12 @@ app.post("/events/:id/book", requireLogin, async (req, res) => {
     const seats = (await getSeatPrices(client, req.params.id, seatIds)).rows;
     const total = seats.reduce((sum, s) => sum + Number(s.price), 0).toFixed(2);
     const order = await client.query(
-      "INSERT INTO orders (user_id, total) VALUES ($1, $2) RETURNING id",
+      "INSERT INTO orders (user_id, total) VALUES (?, ?) RETURNING id",
       [req.session.user.id, total],
     );
     for (const seat of seats) {
       await client.query(
-        "INSERT INTO order_items (order_id, event_id, seat_id, price) VALUES ($1, $2, $3, $4)",
+        "INSERT INTO order_items (order_id, event_id, seat_id, price) VALUES (?, ?, ?, ?)",
         [order.rows[0].id, req.params.id, seat.id, seat.price],
       );
     }
@@ -225,7 +229,7 @@ app.post("/events/:id/book", requireLogin, async (req, res) => {
     res.redirect("/orders");
   } catch (err) {
     await client.query("ROLLBACK");
-    if (err.code === "23505") {
+    if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
       return res
         .status(409)
         .send(
@@ -247,21 +251,21 @@ app.get("/orders", requireLogin, async (req, res) => {
      JOIN order_items oi ON oi.order_id = o.id
      JOIN events e ON e.id = oi.event_id
      JOIN seats s ON s.id = oi.seat_id
-     WHERE o.user_id = $1
+     WHERE o.user_id = ?
      ORDER BY o.created_at DESC, s.section, s.row_num, s.seat_number`,
     [req.session.user.id],
   );
 
   app.post("/orders/:id/cancel", requireLogin, async (req, res) => {
   const result = await pool.query(
-    `DELETE FROM orders o
-     WHERE o.id = $1 AND o.user_id = $2
+    `DELETE FROM orders
+     WHERE id = ? AND user_id = ?
        AND EXISTS (
          SELECT 1 FROM order_items oi
          JOIN events e ON e.id = oi.event_id
-         WHERE oi.order_id = o.id AND e.event_date > now() + interval '7 days'
+         WHERE oi.order_id = orders.id AND datetime(e.event_date) > datetime('now', '+7 days')
        )
-     RETURNING o.id`,
+     RETURNING id`,
     [req.params.id, req.session.user.id],
   );
   if (result.rowCount === 0) {
@@ -307,12 +311,12 @@ async function getRowCount() {
 
 async function saveRowPrices(eventId, body) {
   const rowCount = await getRowCount();
-  await pool.query("DELETE FROM event_row_prices WHERE event_id = $1", [eventId]);
+  await pool.query("DELETE FROM event_row_prices WHERE event_id = ?", [eventId]);
   for (let r = 1; r <= rowCount; r++) {
     const extra = Number(body["extra_" + r]);
     if (extra > 0) {
       await pool.query(
-        "INSERT INTO event_row_prices (event_id, row_num, extra) VALUES ($1, $2, $3)",
+        "INSERT INTO event_row_prices (event_id, row_num, extra) VALUES (?, ?, ?)",
         [eventId, r, extra],
       );
     }
@@ -330,7 +334,7 @@ app.get("/admin/events/new", requireAdmin, async (req, res) => {
 app.post("/admin/events", requireAdmin, async (req, res) => {
   const { title, description, event_date, price, arena_id } = req.body;
   const result = await pool.query(
-    "INSERT INTO events (title, description, event_date, price, arena_id) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+    "INSERT INTO events (title, description, event_date, price, arena_id) VALUES (?, ?, ?, ?, ?) RETURNING id",
     [title, description, event_date, price, arena_id],
   );
   await saveRowPrices(result.rows[0].id, req.body);
@@ -338,7 +342,7 @@ app.post("/admin/events", requireAdmin, async (req, res) => {
 });
 
 app.get("/admin/events/:id/edit", requireAdmin, async (req, res) => {
-  const result = await pool.query("SELECT * FROM events WHERE id = $1", [
+  const result = await pool.query("SELECT * FROM events WHERE id = ?", [
     req.params.id,
   ]);
   if (result.rows.length === 0) return res.status(404).send("Event not found");
@@ -350,7 +354,7 @@ app.get("/admin/events/:id/edit", requireAdmin, async (req, res) => {
     .toISOString()
     .slice(0, 16);
     const extrasResult = await pool.query(
-    "SELECT row_num, extra FROM event_row_prices WHERE event_id = $1",
+    "SELECT row_num, extra FROM event_row_prices WHERE event_id = ?",
     [req.params.id],
   );
   const extras = {};
@@ -362,7 +366,7 @@ app.get("/admin/events/:id/edit", requireAdmin, async (req, res) => {
 app.post("/admin/events/:id/edit", requireAdmin, async (req, res) => {
   const { title, description, event_date, price, arena_id } = req.body;
   await pool.query(
-    "UPDATE events SET title = $1, description = $2, event_date = $3, price = $4, arena_id = $5 WHERE id = $6",
+    "UPDATE events SET title = ?, description = ?, event_date = ?, price = ?, arena_id = ? WHERE id = ?",
     [title, description, event_date, price, arena_id, req.params.id],
   );
   await saveRowPrices(req.params.id, req.body);
@@ -370,14 +374,14 @@ app.post("/admin/events/:id/edit", requireAdmin, async (req, res) => {
 });
 
 app.post("/admin/events/:id/delete", requireAdmin, async (req, res) => {
-  await pool.query("DELETE FROM events WHERE id = $1", [req.params.id]);
+  await pool.query("DELETE FROM events WHERE id = ?", [req.params.id]);
   res.redirect("/events");
 });
 
 app.get("/admin/orders", requireAdmin, async (req, res) => {
   const result = await pool.query(
     `SELECT o.id, o.total, o.created_at, u.email, e.title,
-            string_agg(CASE WHEN s.section = 'FLOOR' THEN 'Floor'
+            group_concat(CASE WHEN s.section = 'FLOOR' THEN 'Floor'
                 ELSE 'Sec ' || s.section || ', row ' || s.row_num || ', seat ' || s.seat_number END,
            '; ' ORDER BY s.section, s.row_num, s.seat_number) AS seats
      FROM orders o
@@ -392,7 +396,7 @@ app.get("/admin/orders", requireAdmin, async (req, res) => {
 });
 
 app.post("/admin/orders/:id/cancel", requireAdmin, async (req, res) => {
-  await pool.query("DELETE FROM orders WHERE id = $1", [req.params.id]);
+  await pool.query("DELETE FROM orders WHERE id = ?", [req.params.id]);
   res.redirect("/admin/orders");
 });
 
@@ -403,12 +407,12 @@ app.post("/register", async (req, res) => {
   try {
     const hash = await bcrypt.hash(password, 10);
     await pool.query(
-      "INSERT INTO users (email, password_hash) VALUES ($1, $2)",
+      "INSERT INTO users (email, password_hash) VALUES (?, ?)",
       [email, hash],
     );
     res.redirect("/login");
   } catch (err) {
-    if (err.code === "23505") {
+    if (err.code === "SQLITE_CONSTRAINT_UNIQUE") {
       return res.render("register", { error: "Email already registered" });
     }
     throw err;
@@ -419,7 +423,7 @@ app.get("/login", (req, res) => res.render("login", { error: null }));
 
 app.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  const result = await pool.query("SELECT * FROM users WHERE email = $1", [
+  const result = await pool.query("SELECT * FROM users WHERE email = ?", [
     email,
   ]);
   const user = result.rows[0];
